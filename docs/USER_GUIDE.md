@@ -86,7 +86,7 @@ These preferences are saved locally and used for future generations.
 
 Go to **My Experience**.
 
-This page is your resume source of truth. It is not the final formatted resume. It is the structured profile that Resume Tailor uses to generate targeted materials.
+This page is your resume source of truth. It is not the final formatted resume. It is the structured profile that Resume Tailor uses to generate targeted materials. You can collapse sections, clear sections, and temporarily omit entries from generated outputs without deleting them.
 
 ### Profile strength
 
@@ -281,9 +281,7 @@ Do not paste private or sensitive information that should not go to the selected
 
 ### 3. Add job title and company
 
-Enter the job title and company if you know them.
-
-You can also use **Auto-detect** when your API key is configured. Auto-detect tries to infer the title and company from the job description.
+Enter the job title and company if you know them. These fields help label saved versions and personalize the cover letter.
 
 ### 4. Generate
 
@@ -296,7 +294,7 @@ The app runs through these steps:
 3. Write cover letter
 4. Prepare Workday script
 
-When generation finishes, the output tabs appear and the result is saved to **Versions**.
+When generation finishes, the output tabs appear and the result is saved to **Versions**. If provider usage data is available, the app also shows an estimated API cost. You can regenerate only the cover letter from the output area if the first version is not the right tone.
 
 ## Reviewing generated output
 
@@ -326,6 +324,8 @@ Check that:
 - it is not too long,
 - it has a clear reason why you fit the role.
 
+If the cover letter is close but not right, use **Regenerate** on the cover-letter output instead of rerunning the whole packet.
+
 ### Workday script review checklist
 
 Before using a generated Workday helper script:
@@ -346,7 +346,9 @@ Each saved version includes:
 - company,
 - job description preview,
 - generated outputs,
-- rewrite mode metadata.
+- rewrite mode metadata,
+- cover-letter tone metadata,
+- estimated API cost when available.
 
 You can:
 
@@ -408,16 +410,6 @@ Check:
 - the provider service is available,
 - your browser/network allows the request.
 
-### Auto-detect does not work
-
-Auto-detect needs:
-
-- a saved API key,
-- a pasted job description,
-- a reachable selected provider.
-
-If it fails, manually type the job title and company.
-
 ### My profile disappeared
 
 Possible causes:
@@ -452,4 +444,5 @@ Use a safer setting:
 - Use dedicated API keys with spending limits.
 - Review generated claims carefully.
 - Do not paste confidential job postings or private information unless you are comfortable sending it to the selected provider.
+- Treat Workday helper scripts as best-effort automation. Review fields before saving anything on an employer site.
 - Treat the app as a drafting assistant, not a final authority.

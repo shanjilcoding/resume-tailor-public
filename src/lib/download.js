@@ -40,11 +40,4 @@ export const OVERLEAF_TEMPLATE_URL = 'https://www.overleaf.com/latex/templates/j
 
 export function openInOverleaf() {
   window.open(OVERLEAF_TEMPLATE_URL, '_blank');
-  alert([
-    'Overleaf steps:',
-    '1. Open as Template. Log in or create an account if prompted.',
-    '2. Delete the example code in main.tex.',
-    '3. Paste the LaTeX code from Resume Tailor.',
-    '4. Recompile, review, then download the PDF.'
-  ].join('\n'));
 }

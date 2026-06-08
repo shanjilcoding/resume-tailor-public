@@ -3,6 +3,7 @@ import { CheckCircle2, Eye, EyeOff, Key, Loader2, Shield, SlidersHorizontal, Tra
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
 import { testConnection } from '../lib/api.js';
+import { estimatePacketCost, formatCost, priceForModel } from '../lib/pricing.js';
 import {
   clearAllData,
   DEFAULT_MODELS,
@@ -26,8 +27,8 @@ const PROVIDERS = [
 
 const PROVIDER_MODELS = {
   anthropic: [
-    { id: 'claude-opus-4-7',           label: 'Claude Opus 4.7 (most capable)' },
-    { id: 'claude-opus-4-6',           label: 'Claude Opus 4.6' },
+    { id: 'claude-opus-4-8',           label: 'Claude Opus 4.8 (most capable)' },
+    { id: 'claude-opus-4-7',           label: 'Claude Opus 4.7' },
     { id: 'claude-sonnet-4-6',         label: 'Claude Sonnet 4.6 (balanced — recommended)' },
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest, cheapest)' },
   ],
@@ -38,9 +39,9 @@ const PROVIDER_MODELS = {
     { id: 'gpt-5.4-nano', label: 'GPT-5.4 nano (fastest, cheapest)' },
   ],
   gemini: [
-    { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash (most intelligent flash — recommended)' },
+    { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash (latest — recommended)' },
+    { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash (fast)' },
     { id: 'gemini-3.1-pro',        label: 'Gemini 3.1 Pro (strongest reasoning)' },
-    { id: 'gemini-3-flash',        label: 'Gemini 3 Flash (fast)' },
     { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (cheapest)' },
   ],
 };
@@ -94,8 +95,6 @@ export default function Settings({ onToast }) {
       warn = 'Anthropic key should start with sk-ant- — check for typos.';
     else if (provider === 'openai' && !apiKey.startsWith('sk-'))
       warn = 'OpenAI key should start with sk- — check for typos.';
-    else if (provider === 'gemini' && !apiKey.startsWith('AIza'))
-      warn = 'Gemini key typically starts with AIza — double-check if this looks wrong.';
     setKeyError(warn);
     saveApiKeyForProvider(provider, apiKey);
     saveActiveProvider(provider);
@@ -207,12 +206,20 @@ export default function Settings({ onToast }) {
               value={model}
               onChange={e => handleModelChange(e.target.value)}
             >
-              {models.map(m => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
+              {models.map(m => {
+                const est = estimatePacketCost(m.id);
+                return (
+                  <option key={m.id} value={m.id}>{m.label}{est != null ? ` · ~${formatCost(est)}/app` : ''}</option>
+                );
+              })}
             </select>
           </label>
           <p className="mt-1.5 text-xs text-slate-500">More capable models cost more per generation. Faster models are cheaper. The recommended option is a good balance for resume tailoring.</p>
+          {priceForModel(model) && (
+            <p className="mt-1 text-xs font-medium text-slate-600">
+              {model}: ${priceForModel(model).input.toFixed(2)} / 1M input · ${priceForModel(model).output.toFixed(2)} / 1M output · ~{formatCost(estimatePacketCost(model))} per application
+            </p>
+          )}
         </div>
 
         {/* Safety warning */}

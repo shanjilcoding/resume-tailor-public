@@ -158,7 +158,7 @@ export function buildBaseLatexResume(resumeData) {
 
   const eduItems = [];
   for (const ed of education) {
-    if (!ed.school.trim()) continue;
+    if (ed.omit || !ed.school.trim()) continue;
     const dates  = dateRange(e(ed.fromYear), e(ed.toYear));
     const degree = [ed.degree, ed.field && `in ${ed.field}`].filter(Boolean).join(' ');
     const meta   = ed.gpa ? `GPA: ${e(ed.gpa)}` : '';
@@ -181,7 +181,7 @@ ${eduItems.join('\n')}
 
   const workItems = [];
   for (const we of sortedWork) {
-    if (!we.title.trim() && !we.company.trim()) continue;
+    if (we.omit || (!we.title.trim() && !we.company.trim())) continue;
     workItems.push(`    \\resumeSubheading
       {${e(we.title)}}{${workDateRange(we)}}
       {${e(we.company)}}{${e(we.location)}}
@@ -196,8 +196,8 @@ ${workItems.join('\n')}
 
   const projectItems = [];
   for (const p of projects) {
-    if (!p.name.trim()) continue;
-    const topBullets = p.bullets.filter(b => b.trim()).slice(0, 2);
+    if (p.omit || !p.name.trim()) continue;
+    const topBullets = p.bullets.filter(b => b.trim()).slice(0, 3);
     projectItems.push(`      \\resumeProjectHeading
           {\\textbf{${e(p.name)}} $|$ \\emph{${e(p.techStack)}}}{}
           \\resumeItemListStart
@@ -206,12 +206,12 @@ ${bulletItems(topBullets)}
   }
   const projectsSection = projectItems.length ? `\\section{Projects}
     \\resumeSubHeadingListStart
-${projectItems.join('\n')}
+${projectItems.join('\n    \\vspace{5pt}\n')}
     \\resumeSubHeadingListEnd` : '';
 
   const certParts = [];
   for (const c of certifications) {
-    if (!c.name.trim()) continue;
+    if (c.omit || !c.name.trim()) continue;
     certParts.push([c.name, c.issuer, c.year].filter(Boolean).join(' -- '));
   }
   const certLine = certParts.length

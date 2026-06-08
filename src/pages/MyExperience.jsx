@@ -1,15 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award,
   BookOpen,
   Briefcase,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Code2,
   Download,
+  Eye,
+  EyeOff,
   Globe,
   GraduationCap,
   Languages,
   Lightbulb,
   Plus,
+  Save,
   Trash2,
   Upload,
   User,
@@ -70,34 +76,64 @@ function FieldGrid({ children }) {
   return <div className="grid gap-3 sm:grid-cols-2">{children}</div>;
 }
 
-function SectionCard({ id, Icon, title, description, children }) {
+function SectionCard({ id, Icon: SectionIcon, title, description, onClear, children }) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
-    <Card id={id} className="scroll-mt-6 space-y-5 p-0 overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-slate-200/80 bg-slate-50/70 px-5 py-4">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
-          <Icon size={15} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-          {description && <p className="text-xs text-slate-500">{description}</p>}
-        </div>
+    <Card id={id} className="scroll-mt-6 p-0 overflow-hidden">
+      <div className="flex items-center border-b border-slate-200/80 bg-slate-50/70">
+        <button
+          type="button"
+          onClick={() => setCollapsed(c => !c)}
+          className="flex flex-1 items-center gap-3 px-5 py-4 text-left"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
+            {React.createElement(SectionIcon, { size: 15 })}
+          </span>
+          <div className="flex-1">
+            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+            {description && <p className="text-xs text-slate-500">{description}</p>}
+          </div>
+          {collapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
+        </button>
+        {onClear && (
+          <button
+            type="button"
+            onClick={onClear}
+            title="Clear section"
+            className="mr-3 flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
-      <div className="space-y-4 px-5 pb-5">{children}</div>
+      {!collapsed && <div className="space-y-4 px-5 py-5">{children}</div>}
     </Card>
   );
 }
 
-function EntryCard({ children, onDelete, title, subtitle }) {
+function EntryCard({ children, onDelete, onToggleOmit, omit, title, subtitle }) {
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+    <div className={`space-y-4 rounded-xl border p-4 transition-opacity ${omit ? 'border-slate-200 bg-slate-50/30 opacity-50' : 'border-slate-200 bg-slate-50/60'}`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {title    && <p className="truncate text-sm font-semibold text-slate-900">{title}</p>}
+        <div className="min-w-0 flex-1">
+          {title    && <p className={`truncate text-sm font-semibold ${omit ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{title}</p>}
           {subtitle && <p className="truncate text-xs text-slate-500">{subtitle}</p>}
         </div>
-        <Button size="sm" variant="ghost" onClick={onDelete} className="shrink-0 text-red-400 hover:bg-red-50 hover:text-red-600">
-          <Trash2 size={13} />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onToggleOmit && (
+            <button
+              type="button"
+              onClick={onToggleOmit}
+              title={omit ? 'Include in resume, cover letter, and Workday' : 'Omit from resume, cover letter, and Workday'}
+              className={`flex size-7 items-center justify-center rounded-lg transition-colors ${omit ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+            >
+              {omit ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          )}
+          <Button size="sm" variant="ghost" aria-label="Delete entry" onClick={onDelete} className="text-red-400 hover:bg-red-50 hover:text-red-600">
+            <Trash2 size={13} />
+          </Button>
+        </div>
       </div>
       {children}
     </div>
@@ -127,26 +163,89 @@ function missingSuggestions(data, completeness) {
 }
 
 export default function MyExperience({ onToast }) {
-  const [data, setData] = useState(getResumeData);
-  const completeness    = useMemo(() => calculateCompleteness(data), [data]);
-  const suggestions     = useMemo(() => missingSuggestions(data, completeness), [data, completeness]);
+  const [data, setData]       = useState(getResumeData);
+  const [saved, setSaved]     = useState(false);
+  const completeness          = useMemo(() => calculateCompleteness(data), [data]);
+  const suggestions           = useMemo(() => missingSuggestions(data, completeness), [data, completeness]);
 
-  useEffect(() => {
-    saveResumeData(data);
-  }, [data]);
+  // Persist to localStorage. Typing (update) is debounced so we don't stringify and
+  // write the whole resume on every keystroke; structural edits save immediately.
+  const saveTimer   = useRef(null);
+  const pendingData = useRef(null);
+  function persist(next, immediate = false) {
+    pendingData.current = next;
+    clearTimeout(saveTimer.current);
+    if (immediate) {
+      saveResumeData(next);
+      pendingData.current = null;
+      return;
+    }
+    saveTimer.current = setTimeout(() => {
+      saveResumeData(pendingData.current);
+      pendingData.current = null;
+    }, 400);
+  }
+  function cancelPendingSave() {
+    clearTimeout(saveTimer.current);
+    pendingData.current = null;
+  }
+  // Flush any pending debounced write when leaving the page.
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current);
+    if (pendingData.current) saveResumeData(pendingData.current);
+  }, []);
 
-  function update(path, value)  { setData(d => setPath(d, path, value)); }
-  function addItem(key, item)   { setData(d => ({ ...d, [key]: [...d[key], { id: newId(), ...item }] })); }
-  function removeItem(key, id)  { setData(d => ({ ...d, [key]: d[key].filter(x => x.id !== id) })); }
+  function handleManualSave() {
+    persist(data, true);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    onToast?.('Saved.');
+  }
+
+  function update(path, value) {
+    setData(d => {
+      const next = setPath(d, path, value);
+      persist(next);
+      return next;
+    });
+  }
+  function addItem(key, item) {
+    setData(d => {
+      const next = { ...d, [key]: [...d[key], { id: newId(), ...item }] };
+      persist(next, true);
+      return next;
+    });
+  }
+  function removeItem(key, id) {
+    setData(d => {
+      const next = { ...d, [key]: d[key].filter(x => x.id !== id) };
+      persist(next, true);
+      return next;
+    });
+  }
   function addBullet(key, idx) {
-    setData(d => { const c = structuredClone(d); c[key][idx].bullets.push(''); return c; });
+    setData(d => {
+      const c = structuredClone(d);
+      c[key][idx].bullets.push('');
+      persist(c, true);
+      return c;
+    });
   }
   function removeBullet(key, idx, bIdx) {
     setData(d => {
       const c = structuredClone(d);
       c[key][idx].bullets.splice(bIdx, 1);
       if (!c[key][idx].bullets.length) c[key][idx].bullets.push('');
+      persist(c, true);
       return c;
+    });
+  }
+
+  function clearSection(key, emptyValue) {
+    setData(d => {
+      const next = { ...d, [key]: emptyValue };
+      persist(next, true);
+      return next;
     });
   }
 
@@ -155,6 +254,7 @@ export default function MyExperience({ onToast }) {
     if (!file) return;
     try {
       const imported = await importResumeJSON(file);
+      cancelPendingSave(); // importResumeJSON already saved; don't let a queued write overwrite it
       setData(imported);
       onToast?.('Resume JSON imported.');
     } catch (err) { onToast?.(err.message); }
@@ -171,6 +271,10 @@ export default function MyExperience({ onToast }) {
           <p className="mt-1.5 max-w-xl text-sm text-slate-500">Add your work, projects, education, skills, and links once. Tailor reuses this as your resume source of truth.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button onClick={handleManualSave}>
+            {saved ? <Check size={14} className="text-emerald-300" /> : <Save size={14} />}
+            {saved ? 'Saved!' : 'Save'}
+          </Button>
           <Button variant="secondary" onClick={exportResumeJSON}>
             <Download size={14} /> Export JSON
           </Button>
@@ -209,13 +313,13 @@ export default function MyExperience({ onToast }) {
               </div>
             )}
             <nav className="space-y-0.5">
-              {SECTION_DEFS.map(({ key, label, Icon }) => (
+              {SECTION_DEFS.map(({ key, label, Icon: SectionIcon }) => (
                 <a
                   key={key}
                   href={`#${key}`}
                   className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
                 >
-                  <Icon size={13} className="shrink-0 text-slate-400" />
+                  {React.createElement(SectionIcon, { size: 13, className: 'shrink-0 text-slate-400' })}
                   {label}
                 </a>
               ))}
@@ -226,7 +330,9 @@ export default function MyExperience({ onToast }) {
         {/* Sections */}
         <main className="space-y-5">
           {/* Personal Info */}
-          <SectionCard id="personal-info" Icon={User} title="Personal Info" description="Used for resume headers, cover letters, and export metadata.">
+          <SectionCard id="personal-info" Icon={User} title="Personal Info" description="Used for resume headers, cover letters, and export metadata."
+            onClear={() => { if (!confirm('Clear all personal info?')) return; clearSection('personal', { name: '', email: '', phone: '', linkedin: '', github: '' }); }}
+          >
             <FieldGrid>
               {PERSONAL_FIELDS.map(({ key, label, placeholder }) => (
                 <Input
@@ -241,7 +347,9 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Work Experience */}
-          <SectionCard id="work-experience" Icon={Briefcase} title="Work Experience" description="Use concrete bullets with action, tool, and result where possible.">
+          <SectionCard id="work-experience" Icon={Briefcase} title="Work Experience" description="Use concrete bullets with action, tool, and result where possible."
+            onClear={() => { if (!confirm('Remove all work experience entries?')) return; clearSection('workExperience', []); }}
+          >
             {data.workExperience.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
                 No work entries yet. Add internships, jobs, freelance work, or campus roles.
@@ -252,6 +360,8 @@ export default function MyExperience({ onToast }) {
                 key={we.id}
                 title={we.title || 'Untitled role'}
                 subtitle={we.company || 'Company not set'}
+                omit={we.omit}
+                onToggleOmit={() => update(['workExperience', i, 'omit'], !we.omit)}
                 onDelete={() => removeItem('workExperience', we.id)}
               >
                 <FieldGrid>
@@ -287,7 +397,7 @@ export default function MyExperience({ onToast }) {
                         onChange={e => update(['workExperience', i, 'bullets', bIdx], e.target.value)}
                         placeholder="Built and shipped X that improved Y by Z%"
                       />
-                      <Button size="sm" variant="ghost" onClick={() => removeBullet('workExperience', i, bIdx)} className="mt-0.5 text-slate-400 hover:text-red-500">
+                      <Button size="sm" variant="ghost" aria-label="Remove bullet" onClick={() => removeBullet('workExperience', i, bIdx)} className="mt-0.5 text-slate-400 hover:text-red-500">
                         <Trash2 size={13} />
                       </Button>
                     </div>
@@ -307,12 +417,16 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Projects */}
-          <SectionCard id="projects" Icon={Code2} title="Projects" description="Projects help tailor entry-level and career-switcher resumes.">
+          <SectionCard id="projects" Icon={Code2} title="Projects" description="Projects help tailor entry-level and career-switcher resumes."
+            onClear={() => { if (!confirm('Remove all project entries?')) return; clearSection('projects', []); }}
+          >
             {data.projects.map((p, i) => (
               <EntryCard
                 key={p.id}
                 title={p.name || 'Untitled project'}
                 subtitle={p.techStack || 'Tech stack not set'}
+                omit={p.omit}
+                onToggleOmit={() => update(['projects', i, 'omit'], !p.omit)}
                 onDelete={() => removeItem('projects', p.id)}
               >
                 <FieldGrid>
@@ -329,7 +443,7 @@ export default function MyExperience({ onToast }) {
                         onChange={e => update(['projects', i, 'bullets', bIdx], e.target.value)}
                         placeholder="Designed and deployed X using Y, handling Z requests/day"
                       />
-                      <Button size="sm" variant="ghost" onClick={() => removeBullet('projects', i, bIdx)} className="mt-0.5 text-slate-400 hover:text-red-500">
+                      <Button size="sm" variant="ghost" aria-label="Remove bullet" onClick={() => removeBullet('projects', i, bIdx)} className="mt-0.5 text-slate-400 hover:text-red-500">
                         <Trash2 size={13} />
                       </Button>
                     </div>
@@ -346,12 +460,16 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Education */}
-          <SectionCard id="education" Icon={GraduationCap} title="Education">
+          <SectionCard id="education" Icon={GraduationCap} title="Education"
+            onClear={() => { if (!confirm('Clear all education entries?')) return; clearSection('education', [{ id: newId(), school: '', degree: '', field: '', gpa: '', fromYear: '', toYear: '' }]); }}
+          >
             {data.education.map((ed, i) => (
               <EntryCard
                 key={ed.id}
                 title={ed.school || 'New education entry'}
                 subtitle={[ed.degree, ed.field].filter(Boolean).join(' · ')}
+                omit={ed.omit}
+                onToggleOmit={() => update(['education', i, 'omit'], !ed.omit)}
                 onDelete={() => removeItem('education', ed.id)}
               >
                 <FieldGrid>
@@ -382,7 +500,9 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Skills */}
-          <SectionCard id="skills" Icon={Lightbulb} title="Skills">
+          <SectionCard id="skills" Icon={Lightbulb} title="Skills"
+            onClear={() => { if (!confirm('Clear all skills?')) return; clearSection('skills', ''); }}
+          >
             <div>
               <Textarea
                 label="Skills"
@@ -395,12 +515,16 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Certifications */}
-          <SectionCard id="certifications" Icon={Award} title="Certifications">
+          <SectionCard id="certifications" Icon={Award} title="Certifications"
+            onClear={() => { if (!confirm('Remove all certifications?')) return; clearSection('certifications', []); }}
+          >
             {data.certifications.map((c, i) => (
               <EntryCard
                 key={c.id}
                 title={c.name || 'Certification not set'}
                 subtitle={c.issuer || 'Issuer not set'}
+                omit={c.omit}
+                onToggleOmit={() => update(['certifications', i, 'omit'], !c.omit)}
                 onDelete={() => removeItem('certifications', c.id)}
               >
                 <FieldGrid>
@@ -416,12 +540,16 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Languages */}
-          <SectionCard id="languages" Icon={Languages} title="Languages">
+          <SectionCard id="languages" Icon={Languages} title="Languages"
+            onClear={() => { if (!confirm('Reset languages to default?')) return; clearSection('languages', [{ id: newId(), language: 'English', fluent: true, reading: 'Advanced', speaking: 'Advanced', writing: 'Advanced' }]); }}
+          >
             {data.languages.map((l, i) => (
               <EntryCard
                 key={l.id}
                 title={l.language || 'Language not set'}
                 subtitle={l.fluent ? 'Fluent' : 'Non-native'}
+                omit={l.omit}
+                onToggleOmit={() => update(['languages', i, 'omit'], !l.omit)}
                 onDelete={() => removeItem('languages', l.id)}
               >
                 <FieldGrid>
@@ -457,7 +585,9 @@ export default function MyExperience({ onToast }) {
           </SectionCard>
 
           {/* Websites */}
-          <SectionCard id="websites" Icon={Globe} title="Websites">
+          <SectionCard id="websites" Icon={Globe} title="Websites"
+            onClear={() => { if (!confirm('Remove all website URLs?')) return; clearSection('websites', []); }}
+          >
             {data.websites.map((site, i) => (
               <div key={`website-${i}`} className="flex gap-2">
                 <Input
@@ -471,13 +601,21 @@ export default function MyExperience({ onToast }) {
                   variant="ghost"
                   aria-label="Remove website"
                   className={`text-slate-400 hover:text-red-500 ${i === 0 ? 'mt-6' : ''}`}
-                  onClick={() => setData(d => ({ ...d, websites: d.websites.filter((_, idx) => idx !== i) }))}
+                  onClick={() => setData(d => {
+                    const next = { ...d, websites: d.websites.filter((_, idx) => idx !== i) };
+                    persist(next, true);
+                    return next;
+                  })}
                 >
                   <Trash2 size={13} />
                 </Button>
               </div>
             ))}
-            <Button variant="secondary" onClick={() => setData(d => ({ ...d, websites: [...d.websites, ''] }))}>
+            <Button variant="secondary" onClick={() => setData(d => {
+              const next = { ...d, websites: [...d.websites, ''] };
+              persist(next, true);
+              return next;
+            })}>
               <Plus size={14} /> Add website
             </Button>
           </SectionCard>

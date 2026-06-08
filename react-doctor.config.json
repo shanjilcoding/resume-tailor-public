@@ -1,5 +1,5 @@
 {
   "ignore": {
-    "files": ["src/**/*.jsx", "src/**/*.js"]
+    "files": ["node_modules/**", "dist/**", "src/lib/workday.stable.js"]
   }
 }

@@ -21,12 +21,13 @@ The app stores profile data, history, and API key settings in browser localStora
 ```bash
 npm install
 npm run dev
+npm run lint
 npm test
 npm run build
 npm audit --omit=dev
 ```
 
-Run `npm test` and `npm run build` before considering UI or logic changes done.
+Run `npm run lint`, `npm test`, and `npm run build` before considering UI or logic changes done. Linting uses a flat ESLint config (`eslint.config.js`); CI runs lint + test + build on push/PR (`.github/workflows/ci.yml`).
 
 ## Repo conventions
 
@@ -34,6 +35,7 @@ Run `npm test` and `npm run build` before considering UI or logic changes done.
 - Do not commit secrets, API keys, generated build output, or dependency folders.
 - Browser-stored API keys must remain user-controlled and clearly disclosed in the UI.
 - Preserve the existing recommendation/tailoring logic unless the task explicitly asks to change it.
+- Preserve `src/lib/workday.stable.js` as a backup/reference Workday script unless explicitly asked to remove it.
 - Prefer focused UI improvements over broad redesigns.
 - Public/customer-facing copy should feel polished, clear, and product-quality.
 
@@ -45,6 +47,9 @@ Run `npm test` and `npm run build` before considering UI or logic changes done.
 - `src/pages/History.jsx` — saved versions page
 - `src/pages/Settings.jsx` — API key/defaults/privacy page
 - `src/components/` — shared UI components
+- `src/lib/pricing.js` — provider/model pricing estimates
+- `src/lib/workday.js` — active Workday helper script generator
+- `src/lib/workday.stable.js` — backup/reference Workday script
 
 ## Quality bar
 

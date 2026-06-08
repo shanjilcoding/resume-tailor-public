@@ -419,7 +419,6 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       for (const [dataKey, value] of Object.entries(entry)) {
-        if (dataKey.startsWith('_')) continue;
         if (isEmpty(value)) continue;
         const field = matchFieldToKey(fields, dataKey);
         if (!field) {
@@ -446,7 +445,7 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
 
   let skillsPlan = null;
   if (pageFields.skills && RESUME_DATA.skills) {
-    const skills = RESUME_DATA.skills.split(',').map(s => s.trim()).filter(Boolean).slice(0, 25);
+    const skills = RESUME_DATA.skills.split(',').map(s => s.trim()).filter(Boolean).slice(0, 15);
     skillsPlan = { container: sections.skills.container, skills };
   }
 
@@ -482,16 +481,6 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
     console.log('      ' + skillsPlan.skills.join(', '));
   }
 
-  const workEntries = RESUME_DATA.workExperience || [];
-  if (workEntries.length) {
-    console.log('\\n▸ bullet sources');
-    workEntries.forEach((w, i) => {
-      const src = w._bulletSource || 'original';
-      const tag = src === 'tailored' ? '✅ tailored' : '📝 original';
-      console.log('   ' + tag + ' — ' + (w['Company'] || 'entry ' + i) + ' / ' + (w['Job Title'] || ''));
-    });
-  }
-
   console.log('\\n═══════════════════════════════════════════════════════════════');
   console.log('   Auto-filling in ' + AUTO_CONFIRM_SECONDS + ' seconds.');
   console.log('   Type cancelFill() to cancel, or just wait.');
@@ -509,7 +498,7 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
   // ─────────────────────────────────────────────────────────────
   // PHASE 4: FILL
   // ─────────────────────────────────────────────────────────────
-  console.log('\\n🚀 Phase 4: Filling...');
+  console.log('\\n🚀 Phase 3: Filling...');
 
   function fill(el, value) {
     if (!el) return false;
@@ -844,41 +833,6 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // COMMIT LAST ENTRY IN EACH SECTION
-  // Workday only saves a repeating-section entry when you navigate
-  // away from it (e.g. by clicking Add for the next one). The last
-  // entry never gets that signal, so we click Add → Delete as a
-  // no-op commit before moving on.
-  // ─────────────────────────────────────────────────────────────
-  console.log('\\n   🔒 Committing last entries...');
-  function sectionDeletes(container) {
-    return [...container.querySelectorAll('[role="button"], button, a')]
-      .filter(el => el.textContent.trim() === 'Delete' && el.offsetParent !== null);
-  }
-  for (const [sectionKey, count] of Object.entries(entriesCreated)) {
-    if (!count) continue;
-    const section = sections[sectionKey];
-    if (!section) continue;
-    if (isAnyDropdownOpen()) await fastClose();
-    const addBtn = section.container.querySelector('[data-automation-id="add-button"]');
-    if (!addBtn) continue;
-    // Count this section's own delete buttons before and after clicking Add.
-    const before = sectionDeletes(section.container).length;
-    addBtn.click();
-    await wait(900);
-    const after = sectionDeletes(section.container);
-    // Only delete the stub if Add actually created a NEW entry in THIS section.
-    // Take the last one (the newest entry), never the first (a real entry).
-    if (after.length > before) {
-      after[after.length - 1].click();
-      await wait(700);
-      console.log('   ✅ ' + sectionKey + ' committed (stub removed).');
-    } else {
-      console.log('   ⚠️ ' + sectionKey + ': Add did not create a removable stub — skipping to avoid data loss.');
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
   // SKILLS
   // ─────────────────────────────────────────────────────────────
   function selectedSkillTexts(container) {
@@ -1011,13 +965,8 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
   }
 
   async function addOneSkill(skill, skillsPlan, inputSelectors) {
-    // Reopen the picker fresh for every skill. Reusing the widget left over from
-    // the previous pick is why only the first skill committed: Workday closes and
-    // re-renders the skills input after each selection, so for skills 2+ the click
-    // landed on a stale picker (it fired, but no chip appeared). Fall back to any
-    // existing input if the reopen finds none, so this is never worse than before.
-    let input = await openSkillsPicker(skillsPlan, inputSelectors)
-      || findSkillsInput(skillsPlan.container, inputSelectors);
+    let input = findSkillsInput(skillsPlan.container, inputSelectors);
+    if (!input) input = await openSkillsPicker(skillsPlan, inputSelectors);
     if (!input) return { ok: false, reason: 'skills input not found' };
     const searchTerm = String(skill || '').toLowerCase();
     const beforeText = selectedSkillTexts(skillsPlan.container);
@@ -1029,24 +978,6 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', keyCode: 13 }));
     input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter', keyCode: 13 }));
     await wait(1000);
-    // Some tenants have no suggestion dropdown — typing + Enter commits the skill
-    // directly, and the "option" the old logic then clicks is actually the saved chip,
-    // which toggles the skill back OFF (the "typed python, then removed python" bug).
-    // So after Enter, poll for the chip to appear and, if it does, return immediately
-    // WITHOUT clicking anything. The suggestion tenant never commits on Enter alone, so
-    // it falls through to the click logic below unchanged (just a little later).
-    {
-      const commitStart = Date.now();
-      while (Date.now() - commitStart < 2500) {
-        const chips = (selectedSkillTexts(skillsPlan.container).match(/×/g) || []).length;
-        if (chips > beforeChipCount) {
-          input = findSkillsInput(skillsPlan.container, inputSelectors) || input;
-          if (input && input.offsetParent !== null) { input.focus(); fill(input, ''); await wait(350); }
-          return { ok: true, chosen: searchTerm };
-        }
-        await wait(200);
-      }
-    }
     let best = null;
     const start = Date.now();
     while (Date.now() - start < 5500) {
@@ -1068,15 +999,6 @@ const WORKDAY_SCRIPT_TEMPLATE = `(async function () {
     if (!best) {
       await clearSkillsSearch(input);
       return { ok: false, reason: 'first dropdown result did not match search' };
-    }
-    // Safety net: if the match is an already-selected skill (a saved chip, not a fresh
-    // suggestion), clicking it would REMOVE the skill. Leave it and report success.
-    const alreadySelected = !!(best.checkbox && best.checkbox.checked)
-      || (best.row && best.row.getAttribute && best.row.getAttribute('aria-selected') === 'true');
-    if (alreadySelected) {
-      input = findSkillsInput(skillsPlan.container, inputSelectors) || input;
-      if (input && input.offsetParent !== null) { input.focus(); fill(input, ''); await wait(350); }
-      return { ok: true, chosen: best.text || searchTerm };
     }
     const chosen = best.text || visibleText(best.row);
     await clickSkillResultOption(best);
@@ -1151,12 +1073,10 @@ export function generateWorkdayScript(resumeData, tailoredBullets = []) {
   } = resumeData;
 
   // Merge tailored bullets — fall back to original bullets if not tailored
-  const workExperienceMapped = workExperience.filter(we => !we.omit).map(we => {
-    const tailored = tailoredBullets.find(t => {
-      const sameCompany = t.company === we.company;
-      if (!sameCompany) return false;
-      return t.title ? t.title === we.title : true;
-    });
+  const workExperienceMapped = workExperience.map(we => {
+    const tailored = tailoredBullets.find(t =>
+      t.company === we.company || t.company === we.title
+    );
     const sourceBullets = tailored
       ? tailored.bullets
       : we.bullets;
@@ -1178,12 +1098,11 @@ export function generateWorkdayScript(resumeData, tailoredBullets = []) {
       "To": we.currentlyWork
         ? { month: '', year: '' }
         : { month: we.toMonth || '', year: we.toYear || '' },
-      "Role Description": description,
-      "_bulletSource": tailored ? 'tailored' : 'original'
+      "Role Description": description
     };
   });
 
-  const educationMapped = education.filter(ed => !ed.omit).map(ed => ({
+  const educationMapped = education.map(ed => ({
     "School or University": ed.school || '',
     "Degree": ed.degree || '',
     "Field of Study": ed.field || '',
@@ -1192,7 +1111,7 @@ export function generateWorkdayScript(resumeData, tailoredBullets = []) {
     "To (Actual or Expected)": { year: ed.toYear || '' }
   }));
 
-  const languagesMapped = languages.filter(l => !l.omit).map(l => ({
+  const languagesMapped = languages.map(l => ({
     "Language": l.language || 'English',
     "I am fluent in this language": l.fluent !== false,
     "Reading": l.reading || 'Advanced',
@@ -1201,10 +1120,9 @@ export function generateWorkdayScript(resumeData, tailoredBullets = []) {
   }));
 
   const certificationsMapped = certifications
-    .filter(c => !c.omit && c.name && c.name.trim())
+    .filter(c => c.name && c.name.trim())
     .map(c => ({
       "Certification": c.name || '',
-      "Issuer": c.issuer || '',
       "Certification Number": '',
       "Issued Date": c.year ? { year: c.year } : { year: '' },
       "Expiration Date": { year: '' }

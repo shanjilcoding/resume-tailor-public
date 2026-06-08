@@ -57,7 +57,7 @@ export default function App() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-1">
-          {pages.map(({ id, label, helper, Icon }) => {
+          {pages.map(({ id, label, helper, Icon: NavIcon }) => {
             const active = page === id;
             return (
               <button
@@ -75,7 +75,7 @@ export default function App() {
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'
                 }`}>
-                  <Icon size={15} />
+                  {React.createElement(NavIcon, { size: 15 })}
                 </span>
                 <span className="min-w-0">
                   <span className={`block text-sm font-semibold ${active ? 'text-indigo-900' : ''}`}>{label}</span>
@@ -115,7 +115,7 @@ export default function App() {
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-slate-200/80 bg-white/95 backdrop-blur lg:hidden">
-        {pages.map(({ id, label, Icon }) => {
+        {pages.map(({ id, label, Icon: NavIcon }) => {
           const active = page === id;
           return (
             <button
@@ -126,7 +126,7 @@ export default function App() {
                 active ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              <Icon size={18} className={active ? 'text-indigo-600' : 'text-slate-400'} />
+              {React.createElement(NavIcon, { size: 18, className: active ? 'text-indigo-600' : 'text-slate-400' })}
               {label}
             </button>
           );

@@ -3,7 +3,7 @@ import { normalizeResumeData, newId } from './validation.js';
 export const DEFAULT_MODELS = {
   anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-5.4-mini',
-  gemini: 'gemini-3.5-flash',
+  gemini: 'gemini-2.5-flash',
 };
 
 const KEYS = {
@@ -20,6 +20,7 @@ const KEYS = {
   modelAnthropic:   'model_anthropic',
   modelOpenai:      'model_openai',
   modelGemini:      'model_gemini',
+  jobTargetDraft:   'jobTargetDraft',
 };
 
 export function getDefaultResumeData() {
@@ -91,8 +92,41 @@ export function getHistory() {
 export function saveToHistory(record) {
   const history = getHistory();
   history.unshift({ ...record, id: record.id || newId() });
-  if (history.length > 50) history.splice(50);
-  localStorage.setItem(KEYS.history, JSON.stringify(history));
+  if (history.length > 25) history.splice(25);
+  // localStorage caps around 5MB and saved Workday scripts are large, so a write
+  // can fail. Drop the older half and retry rather than throwing on the newest run.
+  while (history.length) {
+    try {
+      localStorage.setItem(KEYS.history, JSON.stringify(history));
+      return;
+    } catch {
+      if (history.length === 1) throw new Error('Could not save to Versions — browser storage is full.');
+      history.splice(Math.ceil(history.length / 2));
+    }
+  }
+}
+
+export function getJobTargetDraft() {
+  try {
+    const raw = localStorage.getItem(KEYS.jobTargetDraft);
+    const draft = raw ? JSON.parse(raw) : {};
+    return {
+      jobDescription: typeof draft.jobDescription === 'string' ? draft.jobDescription : '',
+      jobTitle: typeof draft.jobTitle === 'string' ? draft.jobTitle : '',
+      company: typeof draft.company === 'string' ? draft.company : '',
+    };
+  } catch {
+    return { jobDescription: '', jobTitle: '', company: '' };
+  }
+}
+
+export function saveJobTargetDraft(draft) {
+  const safeDraft = {
+    jobDescription: draft.jobDescription || '',
+    jobTitle: draft.jobTitle || '',
+    company: draft.company || '',
+  };
+  localStorage.setItem(KEYS.jobTargetDraft, JSON.stringify(safeDraft));
 }
 
 export function deleteFromHistory(id) {

@@ -33,14 +33,16 @@ export function normalizeResumeData(data) {
     fromYear: ensureString(we.fromYear),
     toMonth: ensureString(we.toMonth),
     toYear: ensureString(we.toYear),
-    bullets: normalizeBullets(we.bullets)
+    bullets: normalizeBullets(we.bullets),
+    omit: Boolean(we.omit),
   }));
 
   const projects = ensureArray(data.projects).map((p = {}) => ({
     id: ensureString(p.id) || newId(),
     name: ensureString(p.name),
     techStack: ensureString(p.techStack),
-    bullets: normalizeBullets(p.bullets)
+    bullets: normalizeBullets(p.bullets),
+    omit: Boolean(p.omit),
   }));
 
   const education = ensureArray(data.education).map((e = {}) => ({
@@ -50,7 +52,8 @@ export function normalizeResumeData(data) {
     field: ensureString(e.field),
     gpa: ensureString(e.gpa),
     fromYear: ensureString(e.fromYear),
-    toYear: ensureString(e.toYear)
+    toYear: ensureString(e.toYear),
+    omit: Boolean(e.omit),
   }));
   if (education.length === 0) education.push({ id: newId(), school: '', degree: '', field: '', gpa: '', fromYear: '', toYear: '' });
 
@@ -71,7 +74,8 @@ export function normalizeResumeData(data) {
     id: ensureString(c.id) || newId(),
     name: ensureString(c.name),
     issuer: ensureString(c.issuer),
-    year: ensureString(c.year)
+    year: ensureString(c.year),
+    omit: Boolean(c.omit),
   }));
 
   const languages = ensureArray(data.languages).map((l = {}) => ({
@@ -80,7 +84,8 @@ export function normalizeResumeData(data) {
     fluent: l.fluent !== false,
     reading: ensureString(l.reading) || 'Advanced',
     speaking: ensureString(l.speaking) || 'Advanced',
-    writing: ensureString(l.writing) || 'Advanced'
+    writing: ensureString(l.writing) || 'Advanced',
+    omit: Boolean(l.omit),
   }));
   if (languages.length === 0) languages.push({ id: newId(), language: 'English', fluent: true, reading: 'Advanced', speaking: 'Advanced', writing: 'Advanced' });
 

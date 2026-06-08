@@ -232,17 +232,21 @@ Go to **Settings**, save a valid provider API key, and click **Test connection**
 
 - Build a reusable resume source of truth in **My Experience**.
 - Store personal info, work experience, projects, education, skills, certifications, languages, and websites.
-- Auto-save changes locally with debounced `localStorage` persistence.
+- Save changes locally in browser `localStorage`, with a visible save confirmation for manual checkpoints.
 - Import/export the resume profile as JSON for backup or transfer.
+- Temporarily omit specific work, project, education, certification, or language entries from generated outputs without deleting them.
+- Collapse large sections and clear sections when rebuilding a profile.
 - Track profile completeness so the user knows when the profile is ready for serious tailoring.
 
 ### Tailored application packet generation
 
 - Paste a job description and optionally provide job title/company.
-- Auto-detect role details from the job posting when an API key is configured.
+- Auto-detect the job title and company from the pasted description.
+- Choose which outputs to generate — resume, cover letter, and/or Workday script — with per-output toggles before generating.
 - Generate a tailored LaTeX resume from the user's saved profile.
-- Generate a cover letter using the selected tone.
+- Generate a cover letter using the selected tone, with an option to regenerate just the cover letter after the packet is created.
 - Generate a Workday helper script from the saved profile and tailored bullet output.
+- Show estimated API cost for generated packets when provider usage data is available.
 - Save each completed generation into local version history.
 
 ### Generation preferences
@@ -264,12 +268,13 @@ Go to **Settings**, save a valid provider API key, and click **Test connection**
 - View saved generations newest-first.
 - Filter saved versions by role or company.
 - Reopen generated outputs.
+- See rewrite mode, cover-letter tone, and estimated API cost when available.
 - Copy, download, or open outputs from saved history.
 - Delete individual versions or clear all history.
 
 ### Output tools
 
-Generated outputs are shown in tabs and can be copied or downloaded. The app is designed around LaTeX-first resume output, with an Overleaf-oriented handoff flow.
+Generated outputs are shown in tabs and can be copied or downloaded. The app is designed around LaTeX-first resume output, with an Overleaf-oriented handoff flow. The Workday helper script is best-effort browser automation and should be reviewed before use on any employer site.
 
 ## How the app works
 
@@ -287,7 +292,7 @@ The app is intentionally local-first. It does not create accounts, run a server,
 
 ### Tailor
 
-The main workflow page. Use it to paste the target job posting and generate the application packet.
+The main workflow page. Use it to paste the target job posting and generate the application packet. You can auto-detect the job title and company from the description, and choose which outputs to generate — resume, cover letter, and/or Workday script — with per-output toggles.
 
 The page checks readiness before generation:
 
@@ -298,7 +303,7 @@ The page checks readiness before generation:
 - projects/certifications added
 - profile strength high enough
 
-Generation is disabled until required inputs are present.
+Generation is disabled until at least one output is selected and its inputs are present. The resume and cover letter require an API key and a job description; the Workday script is built locally from your profile, so it does not need an API key.
 
 ### My Experience
 
@@ -315,7 +320,7 @@ Sections include:
 - Languages
 - Websites
 
-This page is not meant to be the final formatted resume. It is the structured profile that the Tailor page uses to generate final application materials.
+This page is not meant to be the final formatted resume. It is the structured profile that the Tailor page uses to generate final application materials. Entries can be temporarily omitted from outputs without deleting the saved source data.
 
 ### Versions
 
@@ -335,7 +340,7 @@ The configuration page.
 Use it to:
 
 - select the AI provider
-- select the model
+- select the model and see rough per-application cost estimates
 - save the provider API key
 - test the provider connection
 - choose rewrite mode
@@ -411,6 +416,9 @@ npm install
 # Start local dev server
 npm run dev
 
+# Lint the codebase
+npm run lint
+
 # Run unit tests
 npm test
 
@@ -444,9 +452,11 @@ resume-tailor/
 │   │   ├── detect.js
 │   │   ├── download.js
 │   │   ├── latex.js
+│   │   ├── pricing.js              # Provider/model cost estimates
 │   │   ├── storage.js
 │   │   ├── validation.js
-│   │   └── workday.js
+│   │   ├── workday.js              # Active Workday helper script generator
+│   │   └── workday.stable.js       # Backup Workday script kept for rollback/reference
 │   └── pages/
 │       ├── Generator.jsx        # Tailor page
 │       ├── History.jsx          # Versions page
@@ -485,7 +495,7 @@ Recommended manual QA:
 - This is a browser-only app; there is no backend, account system, or cloud sync.
 - Data is tied to the browser/device unless exported as JSON.
 - Clearing browser storage can delete the saved profile, settings, and history.
-- Provider APIs, model names, CORS behavior, and pricing can change over time.
+- Provider APIs, model names, CORS behavior, and pricing can change over time, so cost estimates are approximate.
 - AI-generated output should always be reviewed before sending to an employer.
 - Strong rewrite mode can be useful, but it requires careful fact-checking.
 

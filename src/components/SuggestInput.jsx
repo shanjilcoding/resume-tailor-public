@@ -14,13 +14,23 @@ export default function SuggestInput({ label, value, onChange, options, placehol
     ? options
     : options.filter(o => o.toLowerCase().includes(value.toLowerCase()));
 
-  // Compute fixed-position coordinates whenever the dropdown opens so that it
-  // escapes the SectionCard's overflow:hidden without needing a portal.
+  // Compute fixed-position coordinates so the dropdown escapes the SectionCard's
+  // overflow:hidden without a portal. Recompute on scroll/resize while open, or the
+  // menu detaches from the input when the page moves under it.
   useLayoutEffect(() => {
-    if (open && inputRef.current) {
+    if (!open) return;
+    function updatePos() {
+      if (!inputRef.current) return;
       const r = inputRef.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 4, left: r.left, width: r.width });
     }
+    updatePos();
+    window.addEventListener('scroll', updatePos, true); // capture: also catch scrolling ancestors
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
   }, [open]);
 
   // Close on outside click.

@@ -4,6 +4,14 @@ import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
 import OutputTabs from '../components/OutputTabs.jsx';
 import { clearHistory, deleteFromHistory, getHistory } from '../lib/storage.js';
+import { formatCost } from '../lib/pricing.js';
+
+function itemCost(item) {
+  const c = item.outputs?.cost;
+  if (!c) return null;
+  const parts = [c.resume, c.cover].filter(n => typeof n === 'number');
+  return parts.length ? formatCost(parts.reduce((a, b) => a + b, 0)) : null;
+}
 
 function scoreFromItem(item) {
   const jd    = (item.jobDescription || '').toLowerCase();
@@ -125,24 +133,29 @@ export default function History({ onToast }) {
                 <p className="mt-1 line-clamp-1 text-sm text-slate-500">{item.jobDescription || 'No job description stored.'}</p>
               </button>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${scoreColor(score)}`}>
-                  Match {score}%
+                <span
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${scoreColor(score)}`}
+                  title="Rough estimate from keyword overlap between the job description and your resume — not an official ATS score."
+                >
+                  ~{score}% keywords
                 </span>
                 <Button size="sm" variant="secondary" onClick={() => setOpenId(isOpen ? null : item.id)}>
                   {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   {isOpen ? 'Close' : 'Open'}
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(item.id)} className="text-slate-400 hover:text-red-500">
+                <Button size="sm" variant="ghost" aria-label="Delete version" onClick={() => remove(item.id)} className="text-slate-400 hover:text-red-500">
                   <Trash2 size={14} />
                 </Button>
               </div>
             </div>
 
             <div className="grid gap-x-6 gap-y-1 border-t border-slate-100 bg-slate-50/80 px-5 py-3 text-xs text-slate-500 sm:grid-cols-4">
-              <span>Format: LaTeX</span>
-              <span>Cover letter: included</span>
-              <span>Workday script: included</span>
+              <span>Resume: {item.outputs?.latex ? 'included' : '—'}</span>
+              <span>Cover letter: {item.outputs?.coverLetter ? 'included' : '—'}</span>
+              <span>Workday: {item.outputs?.workdayScript ? 'included' : '—'}</span>
               <span>Mode: {item.meta?.rewriteMode || 'balanced'}</span>
+              <span>Tone: {item.meta?.tone || 'professional'}</span>
+              {itemCost(item) && <span>Est. cost: {itemCost(item)}</span>}
             </div>
 
             {isOpen && (

@@ -12,17 +12,21 @@ import Card from '../components/Card.jsx';
 import Input from '../components/Input.jsx';
 import OutputTabs from '../components/OutputTabs.jsx';
 import Textarea from '../components/Textarea.jsx';
-import { buildBaseLatexResume } from '../lib/latex.js';
 import { calculateCompleteness } from '../lib/validation.js';
-import { detectJobInfo } from '../lib/detect.js';
 import { generateCoverLetter, generateTailoredResume } from '../lib/api.js';
+import { detectJobInfo } from '../lib/detect.js';
 import { generateWorkdayScript } from '../lib/workday.js';
 import {
-  getActiveApiKey, getCoverLetterTone, getResumeData, getRewriteMode,
-  isOnboardingDone, saveToHistory, setOnboardingDone,
+  getActiveApiKey, getCoverLetterTone, getJobTargetDraft, getResumeData, getRewriteMode,
+  isOnboardingDone, saveJobTargetDraft, saveToHistory, setOnboardingDone,
 } from '../lib/storage.js';
 
-const GEN_STEPS = ['Build base resume', 'Tailor with AI', 'Write cover letter', 'Prepare Workday script'];
+const OUTPUT_OPTIONS = [
+  { key: 'resume',  label: 'Resume' },
+  { key: 'cover',   label: 'Cover letter' },
+  { key: 'workday', label: 'Workday' },
+];
+const STEP_LABELS = { resume: 'Tailor resume with AI', cover: 'Write cover letter', workday: 'Prepare Workday script' };
 
 const initialState = {
   jobDescription: '',
@@ -31,22 +35,27 @@ const initialState = {
   outputs: null,
   activeStep: null,
   doneSteps: [],
+  steps: [],
   error: '',
-  detecting: false,
   onboardingDone: isOnboardingDone(),
 };
+
+function getInitialState() {
+  return {
+    ...initialState,
+    ...getJobTargetDraft(),
+  };
+}
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SET': return { ...state, [action.key]: action.value };
-    case 'DETECT_START': return { ...state, detecting: true };
-    case 'DETECT_DONE': return { ...state, detecting: false, jobTitle: action.title?.trim() || state.jobTitle, company: action.company?.trim() || state.company };
-    case 'GEN_START': return { ...state, error: '', outputs: null, doneSteps: [], activeStep: 0 };
+    case 'GEN_START': return { ...state, error: '', doneSteps: [], activeStep: 0, steps: action.steps };
     case 'GEN_STEP': return { ...state, doneSteps: action.doneSteps, activeStep: action.next };
     case 'GEN_DONE': return {
       ...state,
       outputs: action.outputs,
-      doneSteps: [0, 1, 2, 3],
+      doneSteps: state.steps.map((_, i) => i),
       activeStep: null,
       onboardingDone: action.markDone ? true : state.onboardingDone,
     };
@@ -55,25 +64,11 @@ function reducer(state, action) {
   }
 }
 
-function analyzeJob(text, title, company) {
-  const lower = text.toLowerCase();
-  const dict = ['react','typescript','javascript','python','node','api','sql','aws','azure','git','testing','ci/cd','accessibility','tailwind','docker','linux','communication','agile'];
-  const keywords = dict.filter(k => lower.includes(k));
-  const seniority = /senior|lead|principal/.test(lower)
-    ? 'Senior' : /intern|junior|entry|new grad/.test(lower)
-    ? 'Entry-level' : 'Mid-level / unspecified';
-  return {
-    role: title || (lower.includes('frontend') ? 'Frontend role' : lower.includes('software') ? 'Software role' : 'Role not detected'),
-    company: company || 'Company not set',
-    seniority,
-    keywords: keywords.slice(0, 8),
-  };
-}
 
 function profileSignals(resumeData, completeness, apiKey) {
   const workReady    = resumeData.workExperience.some(we => we.title.trim() && we.company.trim() && we.bullets.some(b => b.trim()));
   const projectReady = resumeData.projects.some(p => p.name.trim() || p.techStack.trim() || p.bullets.some(b => b.trim()));
-  const skillsReady  = Object.values(resumeData.skills).some(v => v.trim());
+  const skillsReady  = Boolean(resumeData.skills.trim());
   const basicsReady  = resumeData.personal.name.trim() && resumeData.personal.email.trim();
   return [
     { label: 'API key saved',    done: Boolean(apiKey) },
@@ -91,9 +86,7 @@ function StepIcon({ status }) {
   return <Circle size={16} className="text-slate-300" />;
 }
 
-function JobTargetSection({ state, dispatch, apiKey, jobAnalysis }) {
-  const hasJobDescription = state.jobDescription.trim().length > 0;
-
+function JobTargetSection({ state, onFieldChange, onDetect, detecting, canDetect }) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex items-center gap-3 border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">
@@ -104,74 +97,146 @@ function JobTargetSection({ state, dispatch, apiKey, jobAnalysis }) {
         </div>
       </div>
       <div className="space-y-4 p-5">
-        <Textarea
-          label="Job description"
-          className="min-h-52"
-          value={state.jobDescription}
-          onChange={e => dispatch({ type: 'SET', key: 'jobDescription', value: e.target.value })}
-          placeholder="Paste responsibilities, qualifications, and company details here..."
-        />
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <Input label="Job title" value={state.jobTitle} onChange={e => dispatch({ type: 'SET', key: 'jobTitle', value: e.target.value })} placeholder="Software Engineer" />
-          <Input label="Company"   value={state.company}  onChange={e => dispatch({ type: 'SET', key: 'company',  value: e.target.value })} placeholder="Company name" />
-          <Button
-            variant="secondary"
-            className="mt-6 whitespace-nowrap"
-            disabled={state.detecting || !apiKey || !state.jobDescription.trim()}
-            onClick={() => {
-              dispatch({ type: 'DETECT_START' });
-              detectJobInfo(state.jobDescription).then(info =>
-                dispatch({ type: 'DETECT_DONE', title: info.title, company: info.company })
-              );
-            }}
-          >
-            {state.detecting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {state.detecting ? 'Detecting...' : 'Auto-detect'}
-          </Button>
+        <div>
+          <Textarea
+            label="Job description"
+            className="min-h-52"
+            value={state.jobDescription}
+            onChange={e => onFieldChange('jobDescription', e.target.value)}
+            placeholder="Paste responsibilities, qualifications, and company details here..."
+          />
+          {state.jobDescription.length > 0 && (
+            <p className="mt-1 text-right text-xs text-slate-400">{state.jobDescription.length.toLocaleString()} chars</p>
+          )}
         </div>
-        {hasJobDescription && (
-          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs leading-relaxed text-slate-600">
-            <span className="font-medium text-slate-800">Detected:</span> {jobAnalysis.role} · {jobAnalysis.seniority}
-            {jobAnalysis.keywords.length > 0 && <> · <span className="font-medium text-slate-800">Keywords:</span> {jobAnalysis.keywords.join(', ')}</>}
-          </p>
-        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Input label="Job title" value={state.jobTitle} onChange={e => onFieldChange('jobTitle', e.target.value)} placeholder="Software Engineer" />
+          <Input label="Company"   value={state.company}  onChange={e => onFieldChange('company', e.target.value)} placeholder="Company name" />
+        </div>
+        <Button variant="secondary" size="sm" onClick={onDetect} disabled={!canDetect || detecting}>
+          {detecting
+            ? <><Loader2 size={13} className="animate-spin" /> Detecting…</>
+            : <><Sparkles size={13} /> Auto-detect title &amp; company</>}
+        </Button>
       </div>
     </Card>
   );
 }
 
 export default function Generator({ onToast, onGenerationSaved }) {
-  const [resumeData]      = useState(getResumeData);
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [resumeData]        = useState(getResumeData);
+  const [state, dispatch]   = useReducer(reducer, undefined, getInitialState);
+  const [regenCLLoading, setRegenCLLoading] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [selection, setSelection] = useState({ resume: true, cover: true, workday: true });
 
   const completeness    = useMemo(() => calculateCompleteness(resumeData), [resumeData]);
   const apiKey          = getActiveApiKey();
-  const jobAnalysis     = useMemo(() => analyzeJob(state.jobDescription, state.jobTitle, state.company), [state.jobDescription, state.jobTitle, state.company]);
   const signals         = useMemo(() => profileSignals(resumeData, completeness, apiKey), [resumeData, completeness, apiKey]);
   const allSignalsReady = signals.every(s => s.done);
 
-  const disabledReason = !state.jobDescription.trim()
-    ? 'Paste a job description first.'
-    : !apiKey
-      ? 'Add an API key in Settings.'
-      : completeness < 30
-        ? 'Profile completeness must be at least 30%.'
-        : '';
+  const selectedLabels = OUTPUT_OPTIONS.filter(o => selection[o.key]).map(o => o.label);
+  const anySelected    = selectedLabels.length > 0;
+  const needsAi        = selection.resume || selection.cover; // resume + cover use the API and job description; Workday is local
+  const generateLabel  = selectedLabels.length === OUTPUT_OPTIONS.length
+    ? 'Generate full packet'
+    : anySelected ? `Generate ${selectedLabels.join(' + ')}` : 'Generate';
+
+  const disabledReason = !anySelected
+    ? 'Select at least one output to generate.'
+    : needsAi && !state.jobDescription.trim()
+      ? 'Paste a job description first.'
+      : needsAi && !apiKey
+        ? 'Add an API key in Settings.'
+        : completeness < 30
+          ? 'Profile completeness must be at least 30%.'
+          : '';
+
+  function toggleOutput(key) {
+    setSelection(s => ({ ...s, [key]: !s[key] }));
+  }
+
+  async function detectJobMeta() {
+    setDetecting(true);
+    try {
+      const { title, company } = await detectJobInfo(state.jobDescription);
+      if (!title && !company) { onToast?.('Could not detect title or company — enter them manually.'); return; }
+      const draft = {
+        jobDescription: state.jobDescription,
+        jobTitle: title || state.jobTitle,
+        company: company || state.company,
+      };
+      saveJobTargetDraft(draft);
+      dispatch({ type: 'SET', key: 'jobTitle', value: draft.jobTitle });
+      dispatch({ type: 'SET', key: 'company', value: draft.company });
+      onToast?.('Detected job title and company.');
+    } catch {
+      onToast?.('Detection failed.');
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  function updateJobTargetField(key, value) {
+    const draft = { jobDescription: state.jobDescription, jobTitle: state.jobTitle, company: state.company, [key]: value };
+    saveJobTargetDraft(draft);
+    dispatch({ type: 'SET', key, value });
+  }
+
+  async function regenerateCoverLetter() {
+    if (!state.outputs) return;
+    setRegenCLLoading(true);
+    try {
+      const freshData = getResumeData();
+      const cover = await generateCoverLetter(
+        apiKey, freshData, state.jobTitle, state.company, state.jobDescription, getCoverLetterTone()
+      );
+      const cost = { ...(state.outputs.cost || {}), cover: cover.cost, model: cover.model };
+      dispatch({ type: 'SET', key: 'outputs', value: { ...state.outputs, coverLetter: cover.text, cost } });
+      onToast?.('Cover letter regenerated.');
+    } catch (err) {
+      onToast?.(`Cover letter failed: ${err.message}`);
+    } finally {
+      setRegenCLLoading(false);
+    }
+  }
 
   async function generate() {
-    dispatch({ type: 'GEN_START' });
+    const order = OUTPUT_OPTIONS.filter(o => selection[o.key]).map(o => o.key);
+    dispatch({ type: 'GEN_START', steps: order.map(k => STEP_LABELS[k]) });
     try {
       const rewriteMode = getRewriteMode();
       const tone        = getCoverLetterTone();
-      const baseLatex   = buildBaseLatexResume(resumeData);
-      dispatch({ type: 'GEN_STEP', doneSteps: [0], next: 1 });
-      const [tailored, coverLetter] = await Promise.all([
-        generateTailoredResume(apiKey, baseLatex, resumeData, state.jobDescription, rewriteMode),
-        generateCoverLetter(apiKey, resumeData, state.jobTitle, state.company, state.jobDescription, tone),
-      ]);
-      dispatch({ type: 'GEN_STEP', doneSteps: [0, 1, 2], next: 3 });
-      const workdayScript = generateWorkdayScript(resumeData, tailored.bullets);
-      const outputs = { latex: tailored.latex, coverLetter, workdayScript, tailoredBullets: tailored.bullets };
+      const freshData   = getResumeData();
+      // Merge onto any previous run so unselected outputs are preserved.
+      const outputs = { ...(state.outputs || {}) };
+      const cost    = { ...(state.outputs?.cost || {}) };
+      let tailoredBullets = state.outputs?.tailoredBullets || [];
+      const done = [];
+
+      for (let i = 0; i < order.length; i++) {
+        const key = order[i];
+        if (key === 'resume') {
+          const tailored = await generateTailoredResume(apiKey, freshData, state.jobDescription, rewriteMode);
+          outputs.latex = tailored.latex;
+          outputs.tailoredBullets = tailored.bullets;
+          tailoredBullets = tailored.bullets;
+          cost.resume = tailored.cost;
+          cost.model = tailored.model;
+        } else if (key === 'cover') {
+          const cover = await generateCoverLetter(apiKey, freshData, state.jobTitle, state.company, state.jobDescription, tone);
+          outputs.coverLetter = cover.text;
+          cost.cover = cover.cost;
+          cost.model = cost.model || cover.model;
+        } else if (key === 'workday') {
+          // Uses tailored bullets when the resume is part of this run (or a prior one); otherwise the originals.
+          outputs.workdayScript = generateWorkdayScript(freshData, tailoredBullets);
+        }
+        done.push(i);
+        dispatch({ type: 'GEN_STEP', doneSteps: [...done], next: i + 1 < order.length ? i + 1 : null });
+      }
+
+      outputs.cost = cost;
       const markDone = !state.onboardingDone && apiKey && completeness >= 50;
       if (markDone) setOnboardingDone();
       dispatch({ type: 'GEN_DONE', outputs, markDone });
@@ -232,10 +297,36 @@ export default function Generator({ onToast, onGenerationSaved }) {
       ))}
 
       <div className="space-y-5">
-        <JobTargetSection state={state} dispatch={dispatch} apiKey={apiKey} jobAnalysis={jobAnalysis} />
+        <JobTargetSection
+          state={state}
+          onFieldChange={updateJobTargetField}
+          onDetect={detectJobMeta}
+          detecting={detecting}
+          canDetect={Boolean(state.jobDescription.trim() && apiKey)}
+        />
 
         {/* Generate area */}
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-slate-600">Generate:</span>
+            {OUTPUT_OPTIONS.map(opt => {
+              const on = selection[opt.key];
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => toggleOutput(opt.key)}
+                  disabled={state.activeStep !== null}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {on ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
           {disabledReason && state.activeStep === null && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900">
               <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-600" />
@@ -255,11 +346,11 @@ export default function Generator({ onToast, onGenerationSaved }) {
           >
             {state.activeStep !== null
               ? <><Loader2 size={16} className="animate-spin" /> Generating&#8230;</>
-              : <><Sparkles size={16} /> Generate tailored packet</>}
+              : <><Sparkles size={16} /> {generateLabel}</>}
           </Button>
           {state.activeStep !== null && (
             <div className="grid gap-2 sm:grid-cols-2 animate-fade-up">
-              {GEN_STEPS.map((s, i) => {
+              {state.steps.map((s, i) => {
                 const status = state.doneSteps.includes(i) ? 'done' : state.activeStep === i ? 'active' : 'pending';
                 return (
                   <div key={s} className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-sm transition-colors ${
@@ -279,9 +370,12 @@ export default function Generator({ onToast, onGenerationSaved }) {
         <OutputTabs
           outputs={state.outputs}
           loading={state.activeStep !== null}
+          activeOutputs={selection}
           company={state.company}
           jobTitle={state.jobTitle}
           onToast={onToast}
+          onRegenCoverLetter={state.outputs ? regenerateCoverLetter : null}
+          regenCoverLetterLoading={regenCLLoading}
         />
       </div>
     </div>

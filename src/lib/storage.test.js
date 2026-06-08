@@ -16,10 +16,12 @@ import {
   getActiveProvider,
   getApiKeyForProvider,
   getHistory,
+  getJobTargetDraft,
   getModelForProvider,
   getResumeData,
   saveActiveProvider,
   saveApiKeyForProvider,
+  saveJobTargetDraft,
   saveModelForProvider,
   saveToHistory,
   DEFAULT_MODELS,
@@ -44,6 +46,22 @@ describe('getResumeData', () => {
   });
 });
 
+describe('job target draft storage', () => {
+  it('defaults to empty job fields', () => {
+    expect(getJobTargetDraft()).toEqual({ jobDescription: '', jobTitle: '', company: '' });
+  });
+
+  it('saves and retrieves job fields', () => {
+    saveJobTargetDraft({ jobDescription: 'Build APIs', jobTitle: 'Developer', company: 'Acme' });
+    expect(getJobTargetDraft()).toEqual({ jobDescription: 'Build APIs', jobTitle: 'Developer', company: 'Acme' });
+  });
+
+  it('returns empty fields when draft JSON is invalid', () => {
+    store['jobTargetDraft'] = 'not-json{{';
+    expect(getJobTargetDraft()).toEqual({ jobDescription: '', jobTitle: '', company: '' });
+  });
+});
+
 describe('saveToHistory / getHistory', () => {
   it('stores a record and retrieves it', () => {
     saveToHistory({ date: '2026-01-01', jobTitle: 'Dev', company: 'Acme', outputs: {}, meta: {} });
@@ -58,11 +76,11 @@ describe('saveToHistory / getHistory', () => {
     expect(getHistory()[0].jobTitle).toBe('Second');
   });
 
-  it('caps history at 50 records', () => {
-    for (let i = 0; i < 55; i++) {
+  it('caps history at 25 records', () => {
+    for (let i = 0; i < 30; i++) {
       saveToHistory({ date: `2026-01-${String(i).padStart(2,'0')}`, jobTitle: `Job ${i}`, company: 'X', outputs: {}, meta: {} });
     }
-    expect(getHistory()).toHaveLength(50);
+    expect(getHistory()).toHaveLength(25);
   });
 });
 

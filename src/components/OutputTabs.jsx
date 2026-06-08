@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Check, ClipboardCopy, Download, ExternalLink, FileCode2, Loader2, Mail, TerminalSquare } from 'lucide-react';
+import { AlertTriangle, Check, ClipboardCopy, Download, ExternalLink, FileCode2, Loader2, Mail, RefreshCw, TerminalSquare } from 'lucide-react';
 import Button from './Button.jsx';
 import Card from './Card.jsx';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { downloadCoverLetter, downloadLatex, downloadWorkdayScript, openInOverleaf } from '../lib/download.js';
+import { formatCost } from '../lib/pricing.js';
 
 const PLACEHOLDERS = {
   latex:         'Your tailored resume will appear here after you generate.',
@@ -17,9 +18,10 @@ const INSTRUCTIONS = {
   workdayScript: "Open the employer's Workday \"My Experience\" page, press F12, open the Console tab, paste the script, and press Enter. It clears existing entries and refills everything. Review every field before saving. Workday layouts vary by company — best-effort automation.",
 };
 
-function OutputCard({ title, subtitle, Icon, content, loading, placeholder, instructions, onToast, children }) {
+function OutputCard({ title, subtitle, Icon: CardIcon, content, loading, placeholder, instructions, onToast, showWordCount, children }) {
   const [copied, setCopied] = useState(false);
   const isFilled = !!content && !loading;
+  const wordCount = showWordCount && isFilled ? content.trim().split(/\s+/).filter(Boolean).length : 0;
 
   async function copy() {
     const ok = await copyToClipboard(content || '');
@@ -35,7 +37,7 @@ function OutputCard({ title, subtitle, Icon, content, loading, placeholder, inst
       {/* Header */}
       <div className="flex items-start gap-3">
         <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors ${isFilled ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
-          <Icon size={16} />
+          {React.createElement(CardIcon, { size: 16 })}
         </span>
         <div>
           <p className={`font-semibold transition-colors ${isFilled ? 'text-slate-900' : 'text-slate-500'}`}>{title}</p>
@@ -59,13 +61,16 @@ function OutputCard({ title, subtitle, Icon, content, loading, placeholder, inst
       )}
 
       {/* Action buttons */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" onClick={copy} disabled={!isFilled}>
           {copied ? <Check size={13} className="text-emerald-600" /> : <ClipboardCopy size={13} />}
           {copied ? 'Copied!' : 'Copy'}
         </Button>
         {React.Children.map(children, child =>
           React.isValidElement(child) ? React.cloneElement(child, { disabled: !isFilled }) : child
+        )}
+        {wordCount > 0 && (
+          <span className="ml-auto text-xs text-slate-400">{wordCount} words</span>
         )}
       </div>
 
@@ -77,13 +82,23 @@ function OutputCard({ title, subtitle, Icon, content, loading, placeholder, inst
   );
 }
 
-export default function OutputTabs({ outputs, loading, company, jobTitle, onToast }) {
+export default function OutputTabs({ outputs, loading, activeOutputs, company, jobTitle, onToast, onRegenCoverLetter, regenCoverLetterLoading }) {
+  // When a partial generation is running, only spin the cards being produced.
+  const cardLoading = key => loading && (!activeOutputs || activeOutputs[key]);
+  const costParts = outputs?.cost ? [outputs.cost.resume, outputs.cost.cover].filter(c => typeof c === 'number') : [];
+  const totalCost = costParts.length ? costParts.reduce((a, b) => a + b, 0) : null;
+
   return (
     <div className="space-y-4">
       {outputs && !loading && (
-        <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <AlertTriangle size={14} className="shrink-0 text-amber-600" />
           Wording can be optimized, but verify dates, metrics, tools used, and seniority level before submitting.
+          {totalCost != null && (
+            <span className="ml-auto rounded-full bg-white/70 px-2.5 py-0.5 text-xs font-medium text-amber-800" title={outputs.cost.model ? `Estimated API cost on ${outputs.cost.model}` : 'Estimated API cost'}>
+              Est. API cost: {formatCost(totalCost)}{outputs.cost.model ? ` · ${outputs.cost.model}` : ''}
+            </span>
+          )}
         </div>
       )}
 
@@ -93,7 +108,7 @@ export default function OutputTabs({ outputs, loading, company, jobTitle, onToas
           subtitle="LaTeX format"
           Icon={FileCode2}
           content={outputs?.latex}
-          loading={loading}
+          loading={cardLoading('resume')}
           placeholder={PLACEHOLDERS.latex}
           instructions={INSTRUCTIONS.latex}
           onToast={onToast}
@@ -101,7 +116,7 @@ export default function OutputTabs({ outputs, loading, company, jobTitle, onToas
           <Button variant="secondary" size="sm" onClick={() => downloadLatex(outputs?.latex, company, jobTitle)}>
             <Download size={13} /> Download .tex
           </Button>
-          <Button size="sm" onClick={() => openInOverleaf(outputs?.latex)}>
+          <Button size="sm" onClick={() => openInOverleaf()}>
             <ExternalLink size={13} /> Open in Overleaf
           </Button>
         </OutputCard>
@@ -111,14 +126,21 @@ export default function OutputTabs({ outputs, loading, company, jobTitle, onToas
           subtitle="Plain text"
           Icon={Mail}
           content={outputs?.coverLetter}
-          loading={loading}
+          loading={cardLoading('cover')}
           placeholder={PLACEHOLDERS.coverLetter}
           instructions={INSTRUCTIONS.coverLetter}
           onToast={onToast}
+          showWordCount
         >
           <Button variant="secondary" size="sm" onClick={() => downloadCoverLetter(outputs?.coverLetter, company, jobTitle)}>
             <Download size={13} /> Download .txt
           </Button>
+          {onRegenCoverLetter && (
+            <Button variant="secondary" size="sm" onClick={onRegenCoverLetter} disabled={regenCoverLetterLoading}>
+              {regenCoverLetterLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {regenCoverLetterLoading ? 'Writing...' : 'Regenerate'}
+            </Button>
+          )}
         </OutputCard>
 
         <OutputCard
@@ -126,7 +148,7 @@ export default function OutputTabs({ outputs, loading, company, jobTitle, onToas
           subtitle="Browser console script"
           Icon={TerminalSquare}
           content={outputs?.workdayScript}
-          loading={loading}
+          loading={cardLoading('workday')}
           placeholder={PLACEHOLDERS.workdayScript}
           instructions={INSTRUCTIONS.workdayScript}
           onToast={onToast}
